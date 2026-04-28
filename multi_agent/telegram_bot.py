@@ -1,10 +1,10 @@
 """
 SOLIS Telegram bot — polling mode.
 
-Required env vars:
+Required env vars (set in .env or environment):
   TELEGRAM_BOT_TOKEN      — from @BotFather
-  ANTHROPIC_API_KEY       — for orchestrator / Claude agents
-  GROQ_API_KEY            — for email+calendar agent
+  GROQ_API_KEY            — from groq.com
+  TAVILY_API_KEY          — from tavily.com
 
 Optional env vars:
   TELEGRAM_ALLOWED_IDS    — comma-separated Telegram user IDs allowed to use the bot
@@ -18,6 +18,9 @@ Run:
 import os
 import sys
 import threading
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import telebot
 
