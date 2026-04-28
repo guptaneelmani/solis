@@ -14,9 +14,10 @@ class CodeAgent:
 
     def run(self, request: str) -> str:
         with self.client.messages.stream(
-            model="claude-opus-4-7",
+            model="claude-sonnet-4-6",
             max_tokens=8192,
             thinking={"type": "adaptive"},
+            output_config={"effort": "high"},
             system=_SYSTEM,
             messages=[{"role": "user", "content": request}],
         ) as stream:

@@ -29,9 +29,8 @@ class Orchestrator:
 
     def route(self, user_input: str) -> str:
         response = self.client.messages.parse(
-            model="claude-opus-4-7",
+            model="claude-haiku-4-5",
             max_tokens=64,
-            output_config={"effort": "low"},
             system=_ROUTING_SYSTEM,
             messages=[{"role": "user", "content": user_input}],
             output_format=_Route,

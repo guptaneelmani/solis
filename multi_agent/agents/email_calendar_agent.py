@@ -9,8 +9,7 @@ calls to your provider (Gmail API, Google Calendar API, Microsoft Graph, IMAP, e
 import json
 from datetime import datetime, timedelta, date
 
-import anthropic
-from anthropic import beta_tool
+from groq import Groq
 
 # ---------------------------------------------------------------------------
 # Mock email data
@@ -248,14 +247,7 @@ def _free_slots_on(target_date: date, duration_minutes: int) -> list[dict]:
 # Email tools
 # ---------------------------------------------------------------------------
 
-@beta_tool
 def get_emails(max_emails: int = 20, read_status: str = "all") -> str:
-    """Retrieve emails from the inbox.
-
-    Args:
-        max_emails: Maximum number of emails to retrieve (1–50, default 20).
-        read_status: Filter emails — "all" (default), "unread", or "read".
-    """
     emails = _get_all_emails()
     if read_status == "unread":
         emails = [e for e in emails if not e["read"]]
@@ -264,24 +256,12 @@ def get_emails(max_emails: int = 20, read_status: str = "all") -> str:
     return json.dumps(emails[:min(max(max_emails, 1), 50)], indent=2)
 
 
-@beta_tool
 def get_email_details(email_id: str) -> str:
-    """Get the full body of a specific email.
-
-    Args:
-        email_id: The unique ID of the email (from get_emails or get_thread).
-    """
     body = _EMAIL_BODIES.get(email_id, "Email body not found.")
     return json.dumps({"id": email_id, "body": body, "attachments": []}, indent=2)
 
 
-@beta_tool
 def get_thread(thread_id: str) -> str:
-    """Get all emails in a thread in chronological order.
-
-    Args:
-        thread_id: The thread ID (from get_emails results).
-    """
     thread = sorted(
         [e for e in _get_all_emails() if e["thread_id"] == thread_id],
         key=lambda e: e["date"],
@@ -295,31 +275,133 @@ def get_thread(thread_id: str) -> str:
 # Calendar tools
 # ---------------------------------------------------------------------------
 
-@beta_tool
 def get_upcoming_events(days_ahead: int = 7) -> str:
-    """Get calendar events for the next N days.
-
-    Args:
-        days_ahead: Number of days to look ahead (1–30, default 7).
-    """
     events = _events_in_range(min(max(days_ahead, 1), 30))
     return json.dumps(events, indent=2)
 
 
-@beta_tool
 def find_free_slots(date_str: str, duration_minutes: int = 60) -> str:
-    """Find available time slots on a given date within working hours (9am–6pm).
-
-    Args:
-        date_str: Date to check in YYYY-MM-DD format.
-        duration_minutes: Required slot length in minutes (default 60).
-    """
     try:
         target = date.fromisoformat(date_str)
     except ValueError:
         return json.dumps({"error": f"Invalid date format: {date_str}. Use YYYY-MM-DD."})
     slots = _free_slots_on(target, max(duration_minutes, 15))
     return json.dumps({"date": date_str, "free_slots": slots}, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Groq tool schemas + dispatcher
+# ---------------------------------------------------------------------------
+
+_GROQ_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_emails",
+            "description": "Retrieve emails from the inbox.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_emails": {
+                        "type": "integer",
+                        "description": "Maximum number of emails to retrieve (1–50, default 20).",
+                    },
+                    "read_status": {
+                        "type": "string",
+                        "enum": ["all", "unread", "read"],
+                        "description": "Filter by read status — 'all' (default), 'unread', or 'read'.",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_email_details",
+            "description": "Get the full body of a specific email.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email_id": {
+                        "type": "string",
+                        "description": "The unique ID of the email (from get_emails or get_thread).",
+                    },
+                },
+                "required": ["email_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_thread",
+            "description": "Get all emails in a thread in chronological order.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {
+                        "type": "string",
+                        "description": "The thread ID (from get_emails results).",
+                    },
+                },
+                "required": ["thread_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_upcoming_events",
+            "description": "Get calendar events for the next N days.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days_ahead": {
+                        "type": "integer",
+                        "description": "Number of days to look ahead (1–30, default 7).",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_free_slots",
+            "description": "Find available time slots on a given date within working hours (9am–6pm).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date_str": {
+                        "type": "string",
+                        "description": "Date to check in YYYY-MM-DD format.",
+                    },
+                    "duration_minutes": {
+                        "type": "integer",
+                        "description": "Required slot length in minutes (default 60).",
+                    },
+                },
+                "required": ["date_str"],
+            },
+        },
+    },
+]
+
+_TOOL_MAP = {
+    "get_emails": get_emails,
+    "get_email_details": get_email_details,
+    "get_thread": get_thread,
+    "get_upcoming_events": get_upcoming_events,
+    "find_free_slots": find_free_slots,
+}
+
+
+def _call_tool(name: str, args: dict) -> str:
+    fn = _TOOL_MAP.get(name)
+    if fn is None:
+        return json.dumps({"error": f"Unknown tool: {name}"})
+    return fn(**args)
 
 
 # ---------------------------------------------------------------------------
@@ -340,29 +422,41 @@ _SYSTEM = (
     "conclusions. Present findings grouped by priority. Be concise."
 )
 
+_MODEL = "llama-3.3-70b-versatile"
+
 
 class EmailCalendarAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic()
+        self.client = Groq()
 
     def run(self, request: str) -> str:
-        runner = self.client.beta.messages.tool_runner(
-            model="claude-opus-4-7",
-            max_tokens=4096,
-            system=_SYSTEM,
-            tools=[
-                get_emails, get_email_details, get_thread,
-                get_upcoming_events, find_free_slots,
-            ],
-            messages=[{"role": "user", "content": request}],
-        )
+        messages = [
+            {"role": "system", "content": _SYSTEM},
+            {"role": "user", "content": request},
+        ]
 
-        final_text = ""
-        for message in runner:
-            for block in message.content:
-                if block.type == "text" and block.text:
-                    print(block.text, end="", flush=True)
-                    final_text = block.text
+        while True:
+            response = self.client.chat.completions.create(
+                model=_MODEL,
+                messages=messages,
+                tools=_GROQ_TOOLS,
+                tool_choice="auto",
+                max_tokens=4096,
+            )
+            message = response.choices[0].message
 
-        print()
-        return final_text
+            if not message.tool_calls:
+                result = message.content or ""
+                print(result)
+                return result
+
+            messages.append(message)
+
+            for tc in message.tool_calls:
+                args = json.loads(tc.function.arguments)
+                tool_result = _call_tool(tc.function.name, args)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": tool_result,
+                })

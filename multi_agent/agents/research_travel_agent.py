@@ -22,9 +22,10 @@ class ResearchTravelAgent:
 
         for _ in range(5):  # guard against infinite pause_turn loops
             with self.client.messages.stream(
-                model="claude-opus-4-7",
+                model="claude-sonnet-4-6",
                 max_tokens=4096,
                 thinking={"type": "adaptive"},
+                output_config={"effort": "medium"},
                 system=_SYSTEM,
                 tools=_TOOLS,
                 messages=messages,
