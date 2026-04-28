@@ -20,6 +20,10 @@ ENV/
 .env.local
 .env.*.local
 
+# Google OAuth — never commit these
+multi_agent/credentials.json
+multi_agent/token.json
+
 # IDEs
 .idea/
 .vscode/
