@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""
-Multi-agent system entry point.
+"""SOLIS CLI — loads .env automatically, then starts the multi-agent loop."""
 
-Set ANTHROPIC_API_KEY in your environment before running:
-    export ANTHROPIC_API_KEY=sk-ant-...
-    python main.py
-"""
+from dotenv import load_dotenv
+load_dotenv()
 
 from orchestrator import Orchestrator
 
 
 def main() -> None:
-    print("Multi-Agent System")
-    print("Agents: code · email · research · travel")
+    print("SOLIS")
+    print("Agents: code · productivity · research & travel")
     print("Type 'quit' to exit.\n")
 
     orchestrator = Orchestrator()
