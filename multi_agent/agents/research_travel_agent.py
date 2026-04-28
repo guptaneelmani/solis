@@ -1,7 +1,11 @@
-import anthropic
+import json
+import os
+
+from groq import Groq
+from tavily import TavilyClient
 
 _SYSTEM = (
-    "You are a research and travel specialist. Use web search to find accurate, "
+    "You are a research and travel specialist. Use the web_search tool to find accurate, "
     "up-to-date information.\n\n"
     "For research queries: synthesise findings into a clear, well-structured answer. "
     "Cite sources inline. If a topic is contested, present multiple perspectives.\n\n"
@@ -10,38 +14,70 @@ _SYSTEM = (
     "Structure responses as: overview → key logistics → budget estimate → practical tips."
 )
 
-_TOOLS = [{"type": "web_search_20260209", "name": "web_search"}]
+_MODEL = "llama-3.3-70b-versatile"
+
+_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for current information on any topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    }
+]
+
+
+def _web_search(query: str) -> str:
+    client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+    result = client.search(query=query, max_results=5)
+    formatted = []
+    for r in result.get("results", []):
+        formatted.append(f"**{r['title']}**\n{r['url']}\n{r['content']}\n")
+    return "\n---\n".join(formatted) if formatted else "No results found."
 
 
 class ResearchTravelAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic()
+        self.client = Groq()
 
     def run(self, query: str) -> str:
-        messages = [{"role": "user", "content": query}]
+        messages = [
+            {"role": "system", "content": _SYSTEM},
+            {"role": "user", "content": query},
+        ]
 
-        for _ in range(5):  # guard against infinite pause_turn loops
-            with self.client.messages.stream(
-                model="claude-sonnet-4-6",
-                max_tokens=4096,
-                thinking={"type": "adaptive"},
-                output_config={"effort": "medium"},
-                system=_SYSTEM,
-                tools=_TOOLS,
+        while True:
+            response = self.client.chat.completions.create(
+                model=_MODEL,
                 messages=messages,
-            ) as stream:
-                for text in stream.text_stream:
-                    print(text, end="", flush=True)
-                response = stream.get_final_message()
+                tools=_TOOLS,
+                tool_choice="auto",
+                max_tokens=4096,
+            )
+            message = response.choices[0].message
 
-            if response.stop_reason != "pause_turn":
-                break
+            if not message.tool_calls:
+                result = message.content or ""
+                print(result)
+                return result
 
-            # Server hit its tool-loop limit; re-send to continue
-            messages = [
-                {"role": "user", "content": query},
-                {"role": "assistant", "content": response.content},
-            ]
+            messages.append(message)
 
-        print()
-        return next((b.text for b in response.content if b.type == "text"), "")
+            for tc in message.tool_calls:
+                args = json.loads(tc.function.arguments)
+                tool_result = _web_search(args["query"])
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": tool_result,
+                })

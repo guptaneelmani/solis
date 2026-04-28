@@ -1,4 +1,4 @@
-import anthropic
+from groq import Groq
 
 _SYSTEM = (
     "You are an expert software engineer. Write clean, well-structured, "
@@ -7,23 +7,22 @@ _SYSTEM = (
     "about improvements and why they matter."
 )
 
+_MODEL = "llama-3.3-70b-versatile"
+
 
 class CodeAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic()
+        self.client = Groq()
 
     def run(self, request: str) -> str:
-        with self.client.messages.stream(
-            model="claude-sonnet-4-6",
+        response = self.client.chat.completions.create(
+            model=_MODEL,
             max_tokens=8192,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "high"},
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": request}],
-        ) as stream:
-            for text in stream.text_stream:
-                print(text, end="", flush=True)
-            response = stream.get_final_message()
-
-        print()
-        return next((b.text for b in response.content if b.type == "text"), "")
+            messages=[
+                {"role": "system", "content": _SYSTEM},
+                {"role": "user", "content": request},
+            ],
+        )
+        result = response.choices[0].message.content or ""
+        print(result)
+        return result

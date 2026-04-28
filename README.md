@@ -7,11 +7,11 @@ Three specialised agents, one orchestrator, one Telegram interface.
 
 | Agent | Model | Handles |
 |---|---|---|
-| **Code** | Claude Sonnet 4.6 | Writing, debugging, explaining, and reviewing code |
+| **Code** | Groq Llama 3.3 70B | Writing, debugging, explaining, and reviewing code |
 | **Productivity** | Groq Llama 3.3 70B | Emails, calendar, scheduling, deadlines, inbox management |
-| **Research & Travel** | Claude Sonnet 4.6 | Research, fact-checking, travel planning, destination advice |
+| **Research & Travel** | Groq Llama 3.3 70B + Tavily | Research, fact-checking, travel planning, destination advice |
 
-The **orchestrator** uses Claude Haiku 4.5 for fast, cheap request routing.
+The **orchestrator** uses Groq Llama 3.3 70B for fast routing. The entire stack is free-tier.
 
 ## Setup
 
@@ -20,8 +20,8 @@ git clone https://github.com/guptaneelmani/solis
 cd solis/multi_agent
 pip install -r requirements.txt
 
-export ANTHROPIC_API_KEY=sk-ant-...
 export GROQ_API_KEY=gsk_...
+export TAVILY_API_KEY=tvly-...
 ```
 
 ## Run via CLI
@@ -48,7 +48,7 @@ python telegram_bot.py
 
 **Email / Calendar** — open `agents/email_calendar_agent.py` and replace `_build_emails()` and `_build_events()` with calls to your provider (Gmail API, Google Calendar, Microsoft Graph, IMAP, etc.).
 
-**Research & Travel** — uses Anthropic's hosted web search out of the box. No extra setup needed.
+**Research & Travel** — uses Tavily for live web search. Sign up at tavily.com for a free API key (1,000 searches/month).
 
 ## Project structure
 

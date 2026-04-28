@@ -1,6 +1,7 @@
+import json
 from typing import Literal
 
-import anthropic
+from groq import Groq
 from pydantic import BaseModel
 
 from agents.code_agent import CodeAgent
@@ -12,15 +13,21 @@ class _Route(BaseModel):
     agent: Literal["code", "productivity", "research"]
 
 
-_ROUTING_SYSTEM = """You are a task router. Classify the user request into exactly one category:
+_ROUTING_SYSTEM = """You are a task router. Classify the user request into exactly one category and respond with JSON only.
+
+Categories:
 - code: writing, debugging, explaining, or reviewing code
 - productivity: emails, calendar, scheduling, meetings, deadlines, inbox management
-- research: finding information, explaining topics, fact-checking, travel planning, destinations"""
+- research: finding information, explaining topics, fact-checking, travel planning, destinations
+
+Respond with exactly: {"agent": "<category>"}"""
+
+_MODEL = "llama-3.3-70b-versatile"
 
 
 class Orchestrator:
     def __init__(self):
-        self.client = anthropic.Anthropic()
+        self.client = Groq()
         self.agents: dict[str, CodeAgent | EmailCalendarAgent | ResearchTravelAgent] = {
             "code": CodeAgent(),
             "productivity": EmailCalendarAgent(),
@@ -28,13 +35,16 @@ class Orchestrator:
         }
 
     def route(self, user_input: str) -> str:
-        response = self.client.messages.parse(
-            model="claude-haiku-4-5",
+        response = self.client.chat.completions.create(
+            model=_MODEL,
             max_tokens=64,
-            system=_ROUTING_SYSTEM,
-            messages=[{"role": "user", "content": user_input}],
-            output_format=_Route,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": _ROUTING_SYSTEM},
+                {"role": "user", "content": user_input},
+            ],
         )
-        agent_name = response.parsed_output.agent
+        data = json.loads(response.choices[0].message.content)
+        agent_name = _Route(**data).agent
         print(f"[→ {agent_name} agent]\n")
         return self.agents[agent_name].run(user_input)
